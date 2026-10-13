@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Face + GPS Check-in Test</title>
+<style>
+  /* Layout: single narrow column, four tabs (Enroll, Face test, Location, Results), built for a phone held at arm's length. */
+  :root {
+    --bg: #f4f6f4;
+    --surface: #ffffff;
+    --ink: #16201c;
+    --muted: #5b6962;
+    --line: #dde3df;
+    --accent: #0f6b57;
+    --accent-ink: #ffffff;
+    --good: #17784a;
+    --bad: #b3261e;
+    --warn: #8f5f00;
+    --soft: #e8efeb;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1411; --surface: #161f19; --ink: #e7eee9; --muted: #92a39a; --line: #263229;
+      --accent: #4fc3a1; --accent-ink: #06241b; --good: #5cd08f; --bad: #ff8a80; --warn: #e3b341; --soft: #1d2a22;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1411; --surface: #161f19; --ink: #e7eee9; --muted: #92a39a; --line: #263229;
+    --accent: #4fc3a1; --accent-ink: #06241b; --good: #5cd08f; --bad: #ff8a80; --warn: #e3b341; --soft: #1d2a22;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font); padding-inline: 16px; padding-block: 16px 40px; }
+  .wrap { max-width: 720px; margin-inline: auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; line-height: 1.25; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  p { margin: 0; }
+  .sub { color: var(--muted); margin-top: 4px; }
+  .head { display: flex; flex-direction: column; gap: 10px; }
+  .chip { display: inline-block; align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 12.5px; }
+  .chip.ok { color: var(--good); }
+  .chip.err { color: var(--bad); }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { appearance: none; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 10px 14px; border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel { display: flex; flex-direction: column; gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .grow { flex: 1 1 160px; min-width: 0; }
+  label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  label.inline { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; }
+  input[type="text"], input[type="number"], select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; min-width: 0; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  button.btn { appearance: none; font: inherit; font-weight: 600; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 10px 14px; cursor: pointer; min-height: 42px; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.btn.danger { color: var(--bad); }
+  button.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .video { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #0b0f0d; border-radius: 10px; overflow: hidden; }
+  .video video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+  .video .overlay { position: absolute; inset: auto 0 0 0; padding: 8px 10px; background: rgba(0,0,0,0.55); color: #fff; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .dots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
+  .dot.on { background: var(--accent); border-color: var(--accent); }
+  .big { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .big.good { color: var(--good); } .big.bad { color: var(--bad); } .big.warn { color: var(--warn); }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .kv div { background: var(--bg); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .kv b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .kv span { font-size: 12px; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  td.good { color: var(--good); font-weight: 600; } td.bad { color: var(--bad); font-weight: 600; } td.warn { color: var(--warn); font-weight: 600; }
+  .banner { background: var(--soft); border-left: 4px solid var(--warn); border-radius: 8px; padding: 10px 12px; }
+  .people { display: flex; flex-direction: column; gap: 6px; }
+  .person { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: no-preference) { .tab, button.btn { transition: background 0.12s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Face + GPS check-in test</h1>
+      <p class="sub">Tests whether face matching and a store geofence are reliable enough for staff attendance. Run it on the phone the workers would use.</p>
+    </div>
+    <span id="modelStatus" class="chip">Loading face models…</span>
+  </div>
+
+  <nav role="tablist" aria-label="Test sections">
+    <button class="tab" role="tab" data-tab="enroll" aria-selected="true">Enroll</button>
+    <button class="tab" role="tab" data-tab="face" aria-selected="false">Face test</button>
+    <button class="tab" role="tab" data-tab="loc" aria-selected="false">Location</button>
+    <button class="tab" role="tab" data-tab="results" aria-selected="false">Results</button>
+  </nav>
+
+  <!-- ENROLL -->
+  <section id="tab-enroll" class="panel" role="tabpanel">
+    <div class="card">
+      <h2>1. Enroll a person</h2>
+      <p class="hint">Ask each person first. Only a list of numbers (a face template) is kept, in this browser, no photos. Use "Delete all data" in Results when you finish.</p>
+      <label>Name
+        <input id="enName" type="text" placeholder="e.g. Ravi" autocomplete="off" maxlength="40">
+      </label>
+      <div class="video"><video id="camEnroll" playsinline muted></video><div class="overlay" id="enOverlay">Camera is off</div></div>
+      <div class="dots" id="enDots" aria-label="Samples taken"></div>
+      <p class="hint" id="enPrompt">Take at least 3 samples. Vary the pose and light a little.</p>
+      <div class="row">
+        <button class="btn" id="enCam">Start camera</button>
+        <button class="btn primary" id="enAdd" disabled>Add sample</button>
+        <button class="btn" id="enSave" disabled>Save person</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Enrolled people</h2>
+      <div class="people" id="peopleList"></div>
+    </div>
+  </section>
+
+  <!-- FACE TEST -->
+  <section id="tab-face" class="panel" role="tabpanel" hidden>
+    <div class="card">
+      <h2>2. Check in with a face</h2>
+      <label>Match threshold: <span id="thrVal" class="mono">0.50</span> (lower is stricter)
+        <input id="thr" type="range" min="0.30" max="0.70" step="0.01" value="0.50">
+      </label>
+      <label class="inline"><input id="liveness" type="checkbox" checked> Ask for a blink first (basic liveness check)</label>
+      <div class="video"><video id="camFace" playsinline muted></video><div class="overlay" id="faceOverlay">Camera is off</div></div>
+      <div class="row">
+        <button class="btn" id="faceCam">Start camera</button>
+        <button class="btn primary" id="faceGo" disabled>Check in</button>
+      </div>
+    </div>
+    <div class="card" id="resultCard" hidden>
+      <h2>Result</h2>
+      <div id="resultBig" class="big"></div>
+      <p class="hint" id="resultDetail"></p>
+      <div id="truth">
+        <h2>Who was really in front of the camera?</h2>
+        <div class="row">
+          <label class="grow">Actual person<select id="tActual"></select></label>
+          <label class="grow">Light<select id="tLight">
+            <option>Normal indoor</option><option>Bright indoor</option><option>Dim</option><option>Outdoor sun</option><option>Backlit</option>
+          </select></label>
+          <label class="grow">Worn / condition<select id="tAcc">
+            <option>None</option><option>Glasses</option><option>Cap</option><option>Mask</option><option>Wet or steamy face</option><option>Different angle</option>
+          </select></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="tSave">Save to log</button>
+          <button class="btn" id="tDiscard">Discard</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Try impostors too: choose "Someone not enrolled" when a stranger or a photo is shown.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOCATION -->
+  <section id="tab-loc" class="panel" role="tabpanel" hidden>
+    <div class="card">
+      <h2>3. Store location and radius</h2>
+      <p class="hint">Stand inside the store, then tap "Use my position". Check-ins are accepted when the phone is within the radius.</p>
+      <div class="row">
+        <label class="grow">Store name<input id="gName" type="text" placeholder="e.g. TDS Sreekariyam" maxlength="40"></label>
+      </div>
+      <div class="row">
+        <label class="grow">Latitude<input id="gLat" type="number" step="any"></label>
+        <label class="grow">Longitude<input id="gLon" type="number" step="any"></label>
+      </div>
+      <label>Radius: <span id="gRadVal" class="mono">50 m</span>
+        <input id="gRad" type="range" min="15" max="300" step="5" value="50">
+      </label>
+      <label>Auto check-out after being outside for (seconds)
+        <input id="gAuto" type="number" min="5" max="600" step="5" value="30">
+      </label>
+      <div class="row">
+        <button class="btn" id="gSet">Use my position</button>
+        <button class="btn primary" id="gWatch">Start tracking</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Live position</h2>
+      <div id="gState" class="big">Not tracking</div>
+      <div class="kv">
+        <div><b id="gDist">–</b><span>Distance from store</span></div>
+        <div><b id="gAcc">–</b><span>GPS accuracy</span></div>
+        <div><b id="gAge">–</b><span>Since last fix</span></div>
+        <div><b id="gCount">0</b><span>Fixes received</span></div>
+      </div>
+      <p class="hint" id="gNote"></p>
+      <div id="gBanner" class="banner" hidden>
+        <p id="gBannerText"></p>
+        <div class="row" style="margin-top:8px"><button class="btn" id="gUndo">Undo, I am still working</button></div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="gIn">Check in</button>
+        <button class="btn" id="gOut">Check out</button>
+      </div>
+      <p class="hint" id="gShift">Not checked in</p>
+    </div>
+    <div class="card">
+      <h2>Recent fixes</h2>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>Distance</th><th>Accuracy</th><th>Status</th></tr></thead><tbody id="gFixes"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="tab-results" class="panel" role="tabpanel" hidden>
+    <div class="card">
+      <h2>Face matching summary</h2>
+      <div class="kv" id="sumKv"></div>
+      <p class="hint" id="sumNote"></p>
+    </div>
+    <div class="card">
+      <h2>What if the threshold were different?</h2>
+      <p class="hint">Recomputed from your saved attempts. Pick a threshold where both error rates are acceptable.</p>
+      <div class="scroll"><table><thead><tr><th>Threshold</th><th>Genuine accepted</th><th>False rejects</th><th>Wrong person</th><th>False accepts</th></tr></thead><tbody id="sweep"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>By condition (genuine attempts accepted)</h2>
+      <div class="scroll"><table><thead><tr><th>Condition</th><th>Attempts</th><th>Accepted</th></tr></thead><tbody id="byCond"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Face attempts</h2>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>Actual</th><th>Matched</th><th>Dist</th><th>Outcome</th><th>Light</th><th>Worn</th><th>Live</th></tr></thead><tbody id="faceRows"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Location events</h2>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>Event</th><th>Distance</th><th>Accuracy</th><th>Status</th></tr></thead><tbody id="geoRows"></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <button class="btn" id="exFace">Download face CSV</button>
+        <button class="btn" id="exGeo">Download location CSV</button>
+        <button class="btn danger" id="wipe">Delete all data</button>
+      </div>
+      <p class="hint" id="wipeNote"></p>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
+<script>
+"use strict";
+const NONE = "__none__";
+const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model/";
+
+// <logic>
+function euclid(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); }
+function rank(desc, people) {
+  const out = [];
+  for (const p of people) {
+    let m = Infinity;
+    for (const s of p.samples) { const d = euclid(desc, s); if (d < m) m = d; }
+    out.push({ name: p.name, dist: m });
+  }
+  out.sort((x, y) => x.dist - y.dist);
+  return out;
+}
+function outcomeOf(e, thr) {
+  const genuine = e.actual !== NONE;
+  if (e.live === "failed") return genuine ? "False reject (liveness)" : "Correct reject (liveness)";
+  if (e.noFace) return genuine ? "False reject (no face)" : "Correct reject (no face)";
+  const pred = e.bestDist <= thr ? e.bestName : null;
+  if (!genuine) return pred ? "False accept" : "Correct reject";
+  if (!pred) return "False reject";
+  return pred === e.actual ? "Correct accept" : "Wrong person";
+}
+function statsAt(entries, thr) {
+  const s = { G: 0, CA: 0, FR: 0, WP: 0, I: 0, FA: 0, CR: 0 };
+  for (const e of entries) {
+    const o = outcomeOf(e, thr);
+    if (e.actual === NONE) { s.I++; if (o.startsWith("False accept")) s.FA++; else s.CR++; }
+    else { s.G++; if (o.startsWith("Correct accept")) s.CA++; else if (o.startsWith("Wrong")) s.WP++; else s.FR++; }
+  }
+  return s;
+}
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function geoStatus(dist, acc, radius) {
+  if (dist + acc <= radius) return "inside";
+  if (dist - acc > radius) return "outside";
+  return "borderline";
+}
+function earOf(eye) {
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  return (d(eye[1], eye[5]) + d(eye[2], eye[4])) / (2 * d(eye[0], eye[3]));
+}
+// </logic>
+
+/* ---------- storage (falls back to memory if the browser blocks it) ---------- */
+const mem = {};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); if (v) return JSON.parse(v); } catch (e) {} return mem[k] !== undefined ? mem[k] : d; },
+  set(k, v) { mem[k] = v; try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { delete mem[k]; try { localStorage.removeItem(k); } catch (e) {} }
+};
+let people = store.get("ft_people", []);
+let faceLog = store.get("ft_facelog", []);
+let geoLog = store.get("ft_geolog", []);
+let geo = store.get("ft_geo", { name: "", lat: null, lon: null, radius: 50, auto: 30 });
+let threshold = store.get("ft_thr", 0.5);
+
+const $ = (id) => document.getElementById(id);
+function el(tag, text, cls) { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmtTime = (t) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const r3 = (n) => Math.round(n * 1000) / 1000;
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+  stopCamera();
+  for (const b of document.querySelectorAll(".tab")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  for (const id of ["enroll", "face", "loc", "results"]) $("tab-" + id).hidden = id !== name;
+  if (name === "face") fillActualSelect();
+  if (name === "results") renderResults();
+}
+for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => showTab(b.dataset.tab));
+
+/* ---------- models ---------- */
+let modelsReady = false;
+async function loadModels() {
+  const chip = $("modelStatus");
+  if (typeof faceapi === "undefined") { chip.textContent = "Face library did not load. Check your internet connection."; chip.className = "chip err"; return; }
+  try {
+    try { await faceapi.tf.setBackend("webgl"); } catch (e) {}
+    await faceapi.tf.ready();
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    modelsReady = true;
+    chip.textContent = "Face models ready (" + faceapi.tf.getBackend() + ")";
+    chip.className = "chip ok";
+  } catch (e) {
+    chip.textContent = "Could not load face models: " + (e && e.message ? e.message : e);
+    chip.className = "chip err";
+  }
+}
+const detOpts = () => new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+
+/* ---------- camera ---------- */
+let stream = null, activeVideo = null;
+async function startCamera(video, overlay) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    overlay.textContent = "Camera needs a secure (https) page";
+    throw new Error("no getUserMedia");
+  }
+  stopCamera();
+  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+  video.srcObject = stream;
+  await video.play();
+  activeVideo = video;
+  overlay.textContent = "Camera on";
+}
+function stopCamera() {
+  if (stream) for (const t of stream.getTracks()) t.stop();
+  stream = null;
+  if (activeVideo) activeVideo.srcObject = null;
+  activeVideo = null;
+  for (const id of ["enCam", "faceCam"]) $(id).textContent = "Start camera";
+  for (const id of ["enAdd", "faceGo"]) $(id).disabled = true;
+  $("enOverlay").textContent = "Camera is off";
+  $("faceOverlay").textContent = "Camera is off";
+  verifyRunToken++;
+}
+async function grab(video) {
+  return faceapi.detectSingleFace(video, detOpts()).withFaceLandmarks().withFaceDescriptor();
+}
+
+/* ---------- enroll ---------- */
+const POSES = ["Look straight at the camera", "Turn your head slightly left", "Turn your head slightly right", "Tilt your chin up a little", "Change the light, or put on a cap or glasses if you usually wear one"];
+let draft = [];
+function renderDots() {
+  const box = $("enDots"); box.textContent = "";
+  const n = Math.max(5, draft.length);
+  for (let i = 0; i < n; i++) box.appendChild(el("span", "", "dot" + (i < draft.length ? " on" : "")));
+  $("enPrompt").textContent = draft.length < POSES.length ? "Sample " + (draft.length + 1) + ": " + POSES[draft.length] : "Add more samples if you like, then save.";
+  $("enSave").disabled = !(draft.length >= 3 && $("enName").value.trim());
+}
+function renderPeople() {
+  const box = $("peopleList"); box.textContent = "";
+  if (!people.length) { box.appendChild(el("p", "Nobody enrolled yet.", "hint")); return; }
+  for (const p of people) {
+    const row = el("div", "", "person");
+    row.appendChild(el("span", p.name + " (" + p.samples.length + " samples)"));
+    const del = el("button", "Remove", "btn danger");
+    del.addEventListener("click", () => { people = people.filter((x) => x.name !== p.name); store.set("ft_people", people); renderPeople(); });
+    row.appendChild(del);
+    box.appendChild(row);
+  }
+}
+$("enName").addEventListener("input", renderDots);
+$("enCam").addEventListener("click", async () => {
+  if (stream) { stopCamera(); return; }
+  try { await startCamera($("camEnroll"), $("enOverlay")); $("enCam").textContent = "Stop camera"; $("enAdd").disabled = !modelsReady; }
+  catch (e) { $("enOverlay").textContent = "Camera unavailable: " + (e.message || e); }
+});
+$("enAdd").addEventListener("click", async () => {
+  if (!modelsReady) return;
+  const btn = $("enAdd"); btn.disabled = true;
+  try {
+    const r = await grab($("camEnroll"));
+    const ov = $("enOverlay");
+    if (!r) { ov.textContent = "No face found. Face the camera in good light."; return; }
+    const vw = $("camEnroll").videoWidth || 640;
+    if (r.detection.box.width / vw < 0.22) { ov.textContent = "Move closer to the camera."; return; }
+    const d = Array.from(r.descriptor, (x) => Math.round(x * 10000) / 10000);
+    if (draft.length && euclid(d, draft[0]) > 0.55) { ov.textContent = "This looks like a different face from the first sample. Try again."; return; }
+    draft.push(d);
+    ov.textContent = "Sample " + draft.length + " saved";
+    renderDots();
+  } catch (e) { $("enOverlay").textContent = "Error: " + (e.message || e); }
+  finally { btn.disabled = !stream || !modelsReady; }
+});
+$("enSave").addEventListener("click", () => {
+  const name = $("enName").value.trim();
+  if (!name || draft.length < 3) return;
+  const existing = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (existing) existing.samples.push(...draft); else people.push({ name, samples: draft.slice(), created: Date.now() });
+  store.set("ft_people", people);
+  draft = []; $("enName").value = ""; renderDots(); renderPeople();
+  $("enOverlay").textContent = name + " enrolled";
+});
+
+/* ---------- face test ---------- */
+let verifyRunToken = 0, pending = null;
+$("thr").value = String(threshold); $("thrVal").textContent = threshold.toFixed(2);
+$("thr").addEventListener("input", (e) => { threshold = parseFloat(e.target.value); $("thrVal").textContent = threshold.toFixed(2); store.set("ft_thr", threshold); });
+$("faceCam").addEventListener("click", async () => {
+  if (stream) { stopCamera(); return; }
+  try { await startCamera($("camFace"), $("faceOverlay")); $("faceCam").textContent = "Stop camera"; $("faceGo").disabled = !modelsReady || !people.length; if (!people.length) $("faceOverlay").textContent = "Enroll someone first"; }
+  catch (e) { $("faceOverlay").textContent = "Camera unavailable: " + (e.message || e); }
+});
+function fillActualSelect() {
+  const s = $("tActual"); s.textContent = "";
+  for (const p of people) { const o = el("option", p.name); o.value = p.name; s.appendChild(o); }
+  const o = el("option", "Someone not enrolled"); o.value = NONE; s.appendChild(o);
+}
+async function waitForBlink(video, ms, token) {
+  const start = performance.now(); const ears = []; let dropped = false;
+  while (performance.now() - start < ms && token === verifyRunToken) {
+    const r = await faceapi.detectSingleFace(video, detOpts()).withFaceLandmarks();
+    if (r) {
+      const ear = (earOf(r.landmarks.getLeftEye()) + earOf(r.landmarks.getRightEye())) / 2;
+      ears.push(ear);
+      if (ears.length >= 6) {
+        const sorted = ears.slice().sort((a, b) => a - b);
+        const open = sorted[Math.floor(sorted.length * 0.75)];
+        if (ear < open * 0.7) dropped = true;
+        else if (dropped && ear > open * 0.85) return "passed";
+      }
+    }
+    await sleep(25);
+  }
+  return "failed";
+}
+$("faceGo").addEventListener("click", async () => {
+  if (!stream || !modelsReady || !people.length) return;
+  const token = ++verifyRunToken; const video = $("camFace"), ov = $("faceOverlay"), btn = $("faceGo");
+  btn.disabled = true; $("resultCard").hidden = true;
+  const t0 = performance.now(); let live = "skipped";
+  try {
+    if ($("liveness").checked) {
+      ov.textContent = "Look at the camera and blink once";
+      live = await waitForBlink(video, 8000, token);
+      if (token !== verifyRunToken) return;
+      if (live === "failed") {
+        pending = { ts: Date.now(), live, noFace: false, bestName: null, bestDist: null, secondName: null, secondDist: null, ms: Math.round(performance.now() - t0), thr: threshold };
+        showResult("Blocked: no blink seen", "bad", "The liveness check did not see a blink within 8 seconds. Log this to record whether it was a real person or a spoof attempt.");
+        ov.textContent = "Camera on"; return;
+      }
+    }
+    ov.textContent = "Matching…";
+    const r = await grab(video);
+    if (token !== verifyRunToken) return;
+    const ms = Math.round(performance.now() - t0);
+    if (!r) {
+      pending = { ts: Date.now(), live, noFace: true, bestName: null, bestDist: null, secondName: null, secondDist: null, ms, thr: threshold };
+      showResult("No face found", "warn", "Face the camera in good light and try again.");
+      ov.textContent = "Camera on"; return;
+    }
+    const ranked = rank(r.descriptor, people);
+    const best = ranked[0], second = ranked[1];
+    pending = { ts: Date.now(), live, noFace: false, bestName: best.name, bestDist: r3(best.dist), secondName: second ? second.name : null, secondDist: second ? r3(second.dist) : null, ms, thr: threshold };
+    const ok = best.dist <= threshold;
+    const gap = second ? " Next closest: " + second.name + " (" + r3(second.dist).toFixed(3) + ")." : "";
+    if (ok) showResult("Matched: " + best.name, "good", "Distance " + r3(best.dist).toFixed(3) + " against threshold " + threshold.toFixed(2) + "." + gap + " Took " + (ms / 1000).toFixed(1) + " s.");
+    else showResult("Not recognised", "bad", "Closest was " + best.name + " at " + r3(best.dist).toFixed(3) + ", above the threshold " + threshold.toFixed(2) + "." + gap + " Took " + (ms / 1000).toFixed(1) + " s.");
+    ov.textContent = "Camera on";
+  } catch (e) { ov.textContent = "Error: " + (e.message || e); }
+  finally { btn.disabled = !stream || !modelsReady || !people.length; }
+});
+function showResult(big, tone, detail) {
+  fillActualSelect();
+  const b = $("resultBig"); b.textContent = big; b.className = "big " + tone;
+  $("resultDetail").textContent = detail;
+  $("resultCard").hidden = false;
+  $("resultCard").scrollIntoView({ block: "nearest" });
+}
+$("tSave").addEventListener("click", () => {
+  if (!pending) return;
+  const e = Object.assign({}, pending, { actual: $("tActual").value, light: $("tLight").value, worn: $("tAcc").value });
+  faceLog.push(e); store.set("ft_facelog", faceLog);
+  pending = null; $("resultCard").hidden = true; $("faceOverlay").textContent = "Saved. Ready for the next attempt.";
+});
+$("tDiscard").addEventListener("click", () => { pending = null; $("resultCard").hidden = true; });
+
+/* ---------- location ---------- */
+let watchId = null, fixes = [], fixCount = 0, lastFix = null, checkedIn = null, outsideSince = null, lastAuto = null;
+$("gName").value = geo.name || ""; if (geo.lat != null) { $("gLat").value = geo.lat; $("gLon").value = geo.lon; }
+$("gRad").value = String(geo.radius); $("gRadVal").textContent = geo.radius + " m"; $("gAuto").value = String(geo.auto);
+function saveGeo() {
+  geo.name = $("gName").value.trim();
+  const la = parseFloat($("gLat").value), lo = parseFloat($("gLon").value);
+  geo.lat = isNaN(la) ? null : la; geo.lon = isNaN(lo) ? null : lo;
+  geo.radius = parseInt($("gRad").value, 10); geo.auto = parseInt($("gAuto").value, 10) || 30;
+  store.set("ft_geo", geo);
+}
+for (const id of ["gName", "gLat", "gLon", "gAuto"]) $(id).addEventListener("change", saveGeo);
+$("gRad").addEventListener("input", () => { $("gRadVal").textContent = $("gRad").value + " m"; saveGeo(); if (lastFix) updateLive(lastFix); });
+function geoLogAdd(type, fix, extra) {
+  const dist = fix && geo.lat != null ? haversine(fix.lat, fix.lon, geo.lat, geo.lon) : null;
+  geoLog.push({ ts: Date.now(), type, lat: fix ? fix.lat : null, lon: fix ? fix.lon : null, acc: fix ? Math.round(fix.acc) : null, dist: dist != null ? Math.round(dist) : null, status: dist != null ? geoStatus(dist, fix.acc, geo.radius) : "", note: extra || "" });
+  store.set("ft_geolog", geoLog);
+}
+$("gSet").addEventListener("click", () => {
+  if (!navigator.geolocation) { $("gNote").textContent = "This browser has no location support."; return; }
+  $("gNote").textContent = "Getting a position…";
+  navigator.geolocation.getCurrentPosition((p) => {
+    $("gLat").value = p.coords.latitude.toFixed(6); $("gLon").value = p.coords.longitude.toFixed(6); saveGeo();
+    $("gNote").textContent = "Store location set (accuracy about " + Math.round(p.coords.accuracy) + " m). Phone GPS is less precise indoors, so set it near a window or doorway if you can.";
+  }, (err) => { $("gNote").textContent = "Could not get position: " + err.message; }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+});
+$("gWatch").addEventListener("click", () => {
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; $("gWatch").textContent = "Start tracking"; $("gState").textContent = "Not tracking"; $("gState").className = "big"; return; }
+  if (!navigator.geolocation) { $("gNote").textContent = "This browser has no location support."; return; }
+  saveGeo();
+  if (geo.lat == null) { $("gNote").textContent = "Set the store location first."; return; }
+  fixCount = 0; fixes = [];
+  watchId = navigator.geolocation.watchPosition((p) => {
+    lastFix = { t: Date.now(), lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
+    fixCount++; updateLive(lastFix);
+  }, (err) => { $("gNote").textContent = "Location error: " + err.message; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  $("gWatch").textContent = "Stop tracking"; $("gState").textContent = "Waiting for first fix…";
+});
+function updateLive(f) {
+  const dist = haversine(f.lat, f.lon, geo.lat, geo.lon);
+  const st = geoStatus(dist, f.acc, geo.radius);
+  const s = $("gState");
+  s.textContent = st === "inside" ? "Inside the store area" : st === "outside" ? "Outside the store area" : "Borderline (GPS error overlaps the edge)";
+  s.className = "big " + (st === "inside" ? "good" : st === "outside" ? "bad" : "warn");
+  $("gDist").textContent = Math.round(dist) + " m"; $("gAcc").textContent = "±" + Math.round(f.acc) + " m"; $("gCount").textContent = String(fixCount);
+  fixes.unshift({ t: f.t, dist, acc: f.acc, st }); fixes = fixes.slice(0, 8);
+  const tb = $("gFixes"); tb.textContent = "";
+  for (const x of fixes) {
+    const tr = el("tr"); tr.appendChild(el("td", new Date(x.t).toLocaleTimeString()));
+    tr.appendChild(el("td", Math.round(x.dist) + " m")); tr.appendChild(el("td", "±" + Math.round(x.acc) + " m"));
+    tr.appendChild(el("td", x.st, x.st === "inside" ? "good" : x.st === "outside" ? "bad" : "warn")); tb.appendChild(tr);
+  }
+  if (checkedIn) {
+    if (st === "outside") {
+      if (!outsideSince) outsideSince = Date.now();
+      if (Date.now() - outsideSince >= geo.auto * 1000) autoCheckOut(f);
+    } else outsideSince = null;
+  }
+}
+function autoCheckOut(f) {
+  geoLogAdd("auto-check-out", f, "outside for " + geo.auto + " s");
+  lastAuto = { f, since: checkedIn };
+  checkedIn = null; outsideSince = null; renderShift();
+  $("gBannerText").textContent = "You left the store area, so you were checked out automatically at " + new Date().toLocaleTimeString() + ". This is the notification a worker would see.";
+  $("gBanner").hidden = false;
+}
+$("gUndo").addEventListener("click", () => {
+  if (!lastAuto) return;
+  geoLogAdd("auto-check-out undone", lastFix, "worker said still working");
+  checkedIn = lastAuto.since; lastAuto = null; $("gBanner").hidden = true; renderShift();
+});
+function renderShift() { $("gShift").textContent = checkedIn ? "Checked in since " + new Date(checkedIn).toLocaleTimeString() : "Not checked in"; }
+$("gIn").addEventListener("click", () => {
+  if (!lastFix) { $("gNote").textContent = "Start tracking and wait for a fix first."; return; }
+  const d = haversine(lastFix.lat, lastFix.lon, geo.lat, geo.lon);
+  if (d > geo.radius) { geoLogAdd("check-in blocked", lastFix, "outside radius"); $("gNote").textContent = "Check-in blocked: you are " + Math.round(d) + " m from the store, radius is " + geo.radius + " m."; return; }
+  checkedIn = Date.now(); outsideSince = null; $("gBanner").hidden = true; geoLogAdd("check-in", lastFix); $("gNote").textContent = ""; renderShift();
+});
+$("gOut").addEventListener("click", () => { if (!checkedIn) return; geoLogAdd("check-out", lastFix); checkedIn = null; outsideSince = null; renderShift(); });
+setInterval(() => {
+  if (watchId == null) return;
+  if (!lastFix) { $("gAge").textContent = "–"; return; }
+  const sec = Math.round((Date.now() - lastFix.t) / 1000);
+  $("gAge").textContent = sec + " s";
+  if (sec > 30 && checkedIn) $("gNote").textContent = "No GPS update for " + sec + " s. A worker could be wrongly checked out or stuck checked in if this happens often.";
+}, 1000);
+
+/* ---------- results ---------- */
+function pct(a, b) { return b ? Math.round((a / b) * 100) + "%" : "–"; }
+function renderResults() {
+  const s = statsAt(faceLog, threshold);
+  const kv = $("sumKv"); kv.textContent = "";
+  const add = (v, l) => { const d = el("div"); d.appendChild(el("b", v)); d.appendChild(el("span", l)); kv.appendChild(d); };
+  add(String(faceLog.length), "Attempts logged"); add(pct(s.CA, s.G), "Genuine accepted (" + s.CA + "/" + s.G + ")");
+  add(pct(s.FR, s.G), "False rejects (" + s.FR + "/" + s.G + ")"); add(pct(s.WP, s.G), "Wrong person (" + s.WP + "/" + s.G + ")");
+  add(pct(s.FA, s.I), "False accepts (" + s.FA + "/" + s.I + ")");
+  const times = faceLog.filter((e) => e.ms).map((e) => e.ms).sort((a, b) => a - b);
+  add(times.length ? (times[Math.floor(times.length / 2)] / 1000).toFixed(1) + " s" : "–", "Median time to result");
+  $("sumNote").textContent = "At threshold " + threshold.toFixed(2) + ". " + (s.G < 20 || s.I < 10 ? "Too few attempts for a firm conclusion: aim for 20 genuine attempts across the team in different lighting, and 10 impostor attempts (another person, or a photo)." : "Enough attempts for a first read.");
+  const sw = $("sweep"); sw.textContent = "";
+  for (const t of [0.4, 0.45, 0.5, 0.55, 0.6]) {
+    const x = statsAt(faceLog, t); const tr = el("tr");
+    tr.appendChild(el("td", t.toFixed(2) + (Math.abs(t - threshold) < 0.005 ? " (current)" : "")));
+    tr.appendChild(el("td", pct(x.CA, x.G))); tr.appendChild(el("td", pct(x.FR, x.G))); tr.appendChild(el("td", pct(x.WP, x.G))); tr.appendChild(el("td", pct(x.FA, x.I)));
+    sw.appendChild(tr);
+  }
+  const groups = {};
+  for (const e of faceLog) {
+    if (e.actual === NONE) continue;
+    for (const k of ["Light: " + e.light, "Worn: " + e.worn]) { groups[k] = groups[k] || { n: 0, ok: 0 }; groups[k].n++; if (outcomeOf(e, threshold).startsWith("Correct accept")) groups[k].ok++; }
+  }
+  const bc = $("byCond"); bc.textContent = "";
+  const keys = Object.keys(groups).sort();
+  if (!keys.length) { const tr = el("tr"); const td = el("td", "No genuine attempts yet."); td.colSpan = 3; tr.appendChild(td); bc.appendChild(tr); }
+  for (const k of keys) { const tr = el("tr"); tr.appendChild(el("td", k)); tr.appendChild(el("td", String(groups[k].n))); tr.appendChild(el("td", pct(groups[k].ok, groups[k].n))); bc.appendChild(tr); }
+  const fr = $("faceRows"); fr.textContent = "";
+  for (const e of faceLog.slice().reverse().slice(0, 60)) {
+    const o = outcomeOf(e, threshold); const tr = el("tr");
+    tr.appendChild(el("td", fmtTime(e.ts))); tr.appendChild(el("td", e.actual === NONE ? "Not enrolled" : e.actual));
+    tr.appendChild(el("td", e.bestName ? e.bestName : "–")); tr.appendChild(el("td", e.bestDist != null ? e.bestDist.toFixed(3) : "–"));
+    tr.appendChild(el("td", o, o.startsWith("Correct") ? "good" : "bad")); tr.appendChild(el("td", e.light)); tr.appendChild(el("td", e.worn)); tr.appendChild(el("td", e.live));
+    fr.appendChild(tr);
+  }
+  const gr = $("geoRows"); gr.textContent = "";
+  for (const e of geoLog.slice().reverse().slice(0, 60)) {
+    const tr = el("tr"); tr.appendChild(el("td", fmtTime(e.ts))); tr.appendChild(el("td", e.type));
+    tr.appendChild(el("td", e.dist != null ? e.dist + " m" : "–")); tr.appendChild(el("td", e.acc != null ? "±" + e.acc + " m" : "–"));
+    tr.appendChild(el("td", e.status || "–", e.status === "inside" ? "good" : e.status === "outside" ? "bad" : "warn")); gr.appendChild(tr);
+  }
+}
+function csvCell(v) { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function download(name, text) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+$("exFace").addEventListener("click", () => {
+  const head = ["time", "actual", "matched", "distance", "second", "second_distance", "threshold_used", "outcome_at_current", "light", "worn", "liveness", "ms"];
+  const rows = faceLog.map((e) => [new Date(e.ts).toISOString(), e.actual === NONE ? "not enrolled" : e.actual, e.bestName, e.bestDist, e.secondName, e.secondDist, e.thr, outcomeOf(e, threshold), e.light, e.worn, e.live, e.ms]);
+  download("face-attempts.csv", [head].concat(rows).map((r) => r.map(csvCell).join(",")).join("\n"));
+});
+$("exGeo").addEventListener("click", () => {
+  const head = ["time", "event", "lat", "lon", "accuracy_m", "distance_m", "status", "note"];
+  const rows = geoLog.map((e) => [new Date(e.ts).toISOString(), e.type, e.lat, e.lon, e.acc, e.dist, e.status, e.note]);
+  download("location-events.csv", [head].concat(rows).map((r) => r.map(csvCell).join(",")).join("\n"));
+});
+let wipeArmed = false;
+$("wipe").addEventListener("click", () => {
+  if (!wipeArmed) { wipeArmed = true; $("wipe").textContent = "Tap again to delete everything"; $("wipeNote").textContent = "This removes enrolled face templates, logs and the saved store location from this browser."; return; }
+  for (const k of ["ft_people", "ft_facelog", "ft_geolog", "ft_geo", "ft_thr"]) store.del(k);
+  people = []; faceLog = []; geoLog = []; geo = { name: "", lat: null, lon: null, radius: 50, auto: 30 };
+  $("gName").value = ""; $("gLat").value = ""; $("gLon").value = "";
+  wipeArmed = false; $("wipe").textContent = "Delete all data"; $("wipeNote").textContent = "Everything was deleted."; renderPeople(); renderResults();
+});
+
+renderDots(); renderPeople(); renderShift(); loadModels();
+</script>
+</body>
+</html>
